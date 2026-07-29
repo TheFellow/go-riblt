@@ -130,6 +130,51 @@ If a prefix length is known in advance, `Sketch[T]` offers a fixed-length form
 with `Add`, `Remove`, `Subtract`, and `Decode`. Streaming is the central RIBLT
 advantage because it avoids guessing the difference size.
 
+## Choose what a symbol means in your project
+
+The generic type is not limited to integer IDs. The useful question is which
+fixed-width, reversibly XOR-able representation best matches the data flow in
+your project:
+
+| Project data | RIBLT symbol | Codec approach |
+| --- | --- | --- |
+| Numeric IDs or versions | `uint64` | Use `NewUint64Codec`. |
+| UUIDs, hashes, or fixed binary keys | fixed-width `[]byte` | Use `NewBytesCodec`. |
+| Fixed-layout domain records | the whole struct | Implement `Codec[Record]`; XOR every field and hash a canonical encoding. |
+| Small, bounded text or blobs | length plus padded payload | Encode one fixed-width slot and use `BytesCodec`. |
+| Large documents, files, or variable graphs | content digest or stable ID | Reconcile IDs, then fetch missing values outside RIBLT. |
+
+Every valid symbol representation must be closed under XOR because coded cells
+contain combinations of symbols, not just original values. That rules out
+direct XOR of Go strings, maps, pointers, variable-length slices, and structs
+whose invariants reject intermediate bit patterns. Canonicalize those values
+into fixed-width bytes or reconcile fixed-width identities instead.
+
+Run the complete-record example:
+
+```sh
+go run ./cmd/structs
+```
+
+[`cmd/structs`](cmd/structs/main.go) carries an entire `Record` through
+`Encoder[Record]` and `Decoder[Record]`. Its custom codec XORs the fixed-width
+fields directly and delegates keyed mapping and checksum hashes to
+`BytesCodec`. An updated record is naturally reported as the old value to
+remove and the new value to add.
+
+Run the bounded-document example:
+
+```sh
+go run ./cmd/documents
+```
+
+[`cmd/documents`](cmd/documents/main.go) carries actual UTF-8 document bodies.
+It encodes each one as a 256-byte slot with an explicit byte length and zero
+padding. This is useful when the project has a real maximum payload size. It
+is intentionally not a general document transport: for large or unbounded
+documents, reconcile content digests and retrieve the missing bodies through
+the surrounding synchronization protocol.
+
 ## Observe communication scaling
 
 ```sh
