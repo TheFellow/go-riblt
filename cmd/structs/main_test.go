@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestRecordCodecBooleanGroup(t *testing.T) {
 	codec, err := newRecordCodec([]byte("0123456789abcdef0123456789abcdef"))
@@ -38,10 +41,5 @@ func TestRecordReconciliation(t *testing.T) {
 }
 
 func contains(records []Record, want Record) bool {
-	for _, record := range records {
-		if record == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(records, want)
 }
