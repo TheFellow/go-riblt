@@ -13,13 +13,13 @@ func BenchmarkReconcile(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				left, right := (difference+1)/2, difference/2
 				a, local := make([]uint64, 10000+left), make([]uint64, 10000+right)
-				for j := 0; j < 10000; j++ {
+				for j := range 10000 {
 					a[j], local[j] = uint64(j), uint64(j)
 				}
-				for j := 0; j < left; j++ {
+				for j := range left {
 					a[10000+j] = uint64(20000 + j)
 				}
-				for j := 0; j < right; j++ {
+				for j := range right {
 					local[10000+j] = uint64(30000 + j)
 				}
 				_, sent := reconcile(b, a, local)

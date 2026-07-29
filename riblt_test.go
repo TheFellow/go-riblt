@@ -97,13 +97,13 @@ func TestMalformedEmptyCellDoesNotComplete(t *testing.T) {
 	}
 }
 func TestRandomSetProperties(t *testing.T) {
-	for seed := int64(0); seed < 100; seed++ {
+	for seed := range int64(100) {
 		r := rand.New(rand.NewSource(seed))
 		common := r.Intn(100)
 		left, right := r.Intn(30), r.Intn(30)
 		a := make([]uint64, 0, common+left)
 		b := make([]uint64, 0, common+right)
-		for i := 0; i < common; i++ {
+		for i := range common {
 			a = append(a, uint64(i))
 			b = append(b, uint64(i))
 		}

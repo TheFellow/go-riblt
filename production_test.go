@@ -181,7 +181,7 @@ func TestDecodedSymbolLimit(t *testing.T) {
 	_ = e.Add(1)
 	_ = e.Add(2)
 	d, _ := NewDecoderWithLimits[uint64](c, DecoderLimits{MaxCells: 100, MaxDecodedSymbols: 1})
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		cell, err := e.Next()
 		if err != nil {
 			t.Fatal(err)
