@@ -108,23 +108,39 @@ for _, value := range downstream {
 }
 ```
 
-The protocol loop can run over any ordered transport:
+`Cells` exposes the rateless stream as a lazy `iter.Seq2`. The protocol loop
+can range until the receiver has enough information, then break without
+producing another cell:
 
 ```go
-for !decoder.Complete() {
-    cell, _ := encoder.Next() // send this cell
-    _ = decoder.AddCoded(cell)
-    _ = decoder.TryDecode()
+for cell, err := range encoder.Cells() {
+    if err != nil {
+        return err
+    }
+    // Send cell over an ordered transport, then process it downstream.
+    if err := decoder.AddCoded(cell); err != nil {
+        return err
+    }
+    if err := decoder.TryDecode(); err != nil {
+        return err
+    }
+    if decoder.Complete() {
+        break
+    }
 }
 
 add := decoder.Remote()   // upstream-only
 remove := decoder.Local() // downstream-only
 ```
 
-Cells must arrive in order. The receiver needs a way to signal completion, or
-the sender can transmit bounded batches and await an acknowledgement. Cache
-hashes inside a custom immutable codec only if profiling justifies it; callers
-cannot supply cached hashes as trusted state.
+The sequence is tied to the encoder's current position rather than replayable.
+It calls `Next` only when the range requests a value, and a later range resumes
+at the following cell. `Next` remains available when a transport or event loop
+needs explicit one-cell-at-a-time control. Cells must arrive in order. The
+receiver needs a way to signal completion, or the sender can transmit bounded
+batches and await an acknowledgement. Cache hashes inside a custom immutable
+codec only if profiling justifies it; callers cannot supply cached hashes as
+trusted state.
 
 If a prefix length is known in advance, `Sketch[T]` offers a fixed-length form
 with `Add`, `Remove`, `Subtract`, and `Decode`. Streaming is the central RIBLT

@@ -136,11 +136,12 @@ func reconcile(codec recordCodec, upstream, downstream []Record) ([]Record, []Re
 			return nil, nil, 0, err
 		}
 	}
-	for cells := 1; cells <= 100; cells++ {
-		coded, err := enc.Next()
+	cells := 0
+	for coded, err := range enc.Cells() {
 		if err != nil {
 			return nil, nil, 0, err
 		}
+		cells++
 		if err := dec.AddCoded(coded); err != nil {
 			return nil, nil, 0, err
 		}
@@ -149,6 +150,9 @@ func reconcile(codec recordCodec, upstream, downstream []Record) ([]Record, []Re
 		}
 		if dec.Complete() {
 			return records(dec.Remote()), records(dec.Local()), cells, nil
+		}
+		if cells == 100 {
+			break
 		}
 	}
 	return nil, nil, 0, fmt.Errorf("decode did not complete")

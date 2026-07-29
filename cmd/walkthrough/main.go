@@ -39,8 +39,7 @@ func main() {
 
 	const maxCells = 100
 	used := 0
-	for !decoder.Complete() && used < maxCells {
-		cell, err := encoder.Next()
+	for cell, err := range encoder.Cells() {
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -54,6 +53,9 @@ func main() {
 		}
 		fmt.Printf("            peeled: upstream-only=%v downstream-only=%v complete=%v\n",
 			demo.IDs(decoder.Remote()), demo.IDs(decoder.Local()), decoder.Complete())
+		if decoder.Complete() || used == maxCells {
+			break
+		}
 	}
 	if !decoder.Complete() {
 		log.Fatalf("did not decode after %d cells", used)

@@ -1,9 +1,10 @@
 // Package riblt implements generic Rateless Invertible Bloom Lookup Tables.
 //
 // A RIBLT reconciles two sets whose symmetric difference is much smaller than
-// either set. An encoder emits an unbounded stream of coded symbols; a decoder
-// combines a prefix with its local set and peels it until the difference is
-// known. Communication is proportional to the difference, not the set size.
+// either set. An encoder exposes an unbounded, lazy iter.Seq2 of coded symbols;
+// a decoder combines a prefix with its local set and peels it until the
+// difference is known. Communication is proportional to the difference, not
+// the set size.
 //
 // Values need not have methods. Applications can use the keyed Uint64Codec or
 // fixed-width BytesCodec, or inject a Codec for another reversible fixed-width
