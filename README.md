@@ -175,6 +175,20 @@ is intentionally not a general document transport: for large or unbounded
 documents, reconcile content digests and retrieve the missing bodies through
 the surrounding synchronization protocol.
 
+Run the content-addressed synchronization example:
+
+```sh
+go run ./cmd/chunks
+```
+
+[`cmd/chunks`](cmd/chunks/main.go) scales that pattern to larger values. It
+splits a document into chunks, reconciles the set of SHA-256 chunk IDs, copies
+only missing chunk bodies, and rebuilds the document from an ordered manifest.
+The manifest preserves order and repeated chunks while RIBLT efficiently
+discovers the set difference. Each transferred chunk and the rebuilt document
+are verified against their digest. The example uses fixed-size chunks for
+clarity; content-defined chunking can retain more sharing after insertions.
+
 ## Observe communication scaling
 
 ```sh
