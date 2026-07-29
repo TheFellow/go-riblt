@@ -19,7 +19,7 @@ func main() {
 
 	fmt.Println("2. Placement and validation use independent deterministic hashes.")
 	for _, s := range []demo.Symbol{a, b} {
-		h := riblt.Hash[demo.Symbol](codec, s)
+		h, _ := riblt.Hash[demo.Symbol](codec, s)
 		fmt.Printf("   %-8s mapping=%016x checksum=%016x\n", s, h.MappingHash, h.Checksum)
 	}
 	fmt.Println("   The mapping hash seeds a repeatable, increasingly sparse cell sequence.")

@@ -21,8 +21,12 @@ func (s Symbol) String() string { return fmt.Sprintf("item-%d", s.ID) }
 // hash and authenticate the protocol messages.
 type Codec struct{}
 
-func (Codec) Zero() Symbol         { return Symbol{} }
-func (Codec) IsZero(s Symbol) bool { return s == (Symbol{}) }
+func (Codec) Zero() Symbol              { return Symbol{} }
+func (Codec) IsZero(s Symbol) bool      { return s == (Symbol{}) }
+func (Codec) Clone(s Symbol) Symbol     { return s }
+func (Codec) Equal(a, b Symbol) bool    { return a == b }
+func (Codec) Validate(Symbol) error     { return nil }
+func (Codec) CompatibilityID() [32]byte { return [32]byte{1} }
 
 func (Codec) XOR(a, b Symbol) Symbol { return Symbol{ID: a.ID ^ b.ID} }
 

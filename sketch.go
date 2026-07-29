@@ -2,44 +2,58 @@ package riblt
 
 // Sketch is a mutable fixed-length prefix, useful when its size is known.
 type Sketch[T any] struct {
-	codec Codec[T]
-	cells []CodedSymbol[T]
-	seen  map[identity]struct{}
+	codec         Codec[T]
+	cells         []CodedSymbol[T]
+	seen          symbolSet[T]
+	compatibility [32]byte
 }
 
 func NewSketch[T any](codec Codec[T], length int) (*Sketch[T], error) {
-	if codec == nil {
-		return nil, ErrNilCodec
+	if err := validateCodec(codec); err != nil {
+		return nil, err
 	}
 	if length < 0 {
 		return nil, ErrDifferentLength
 	}
-	s := &Sketch[T]{codec: codec, cells: make([]CodedSymbol[T], length), seen: make(map[identity]struct{})}
+	s := &Sketch[T]{codec: codec, cells: make([]CodedSymbol[T], length), seen: newSymbolSet(codec), compatibility: codec.CompatibilityID()}
 	for i := range s.cells {
 		s.cells[i] = zeroCoded(codec)
 	}
 	return s, nil
 }
-func (s *Sketch[T]) Cells() []CodedSymbol[T] { return append([]CodedSymbol[T](nil), s.cells...) }
-func (s *Sketch[T]) Add(v T) error           { return s.AddHashed(Hash(s.codec, v)) }
-func (s *Sketch[T]) AddHashed(v HashedSymbol[T]) error {
-	id := identity{v.MappingHash, v.Checksum}
-	if _, ok := s.seen[id]; ok {
+func (s *Sketch[T]) Cells() []CodedSymbol[T] {
+	out := make([]CodedSymbol[T], len(s.cells))
+	for i := range s.cells {
+		out[i] = cloneCoded(s.codec, s.cells[i])
+	}
+	return out
+}
+func (s *Sketch[T]) Add(value T) error {
+	if err := s.codec.Validate(value); err != nil {
+		return err
+	}
+	v := hashSymbol(s.codec, s.codec.Clone(value))
+	if !s.seen.add(v) {
 		return ErrDuplicate
 	}
-	s.seen[id] = struct{}{}
-	return s.update(v, 1)
+	if err := s.update(v, 1); err != nil {
+		s.seen.remove(v)
+		return err
+	}
+	return nil
 }
 func (s *Sketch[T]) Remove(v T) error {
-	h := Hash(s.codec, v)
-	id := identity{h.MappingHash, h.Checksum}
-	if _, ok := s.seen[id]; !ok {
+	if err := s.codec.Validate(v); err != nil {
+		return err
+	}
+	h := hashSymbol(s.codec, v)
+	if !s.seen.remove(h) {
 		return ErrNotPresent
 	}
 	if err := s.update(h, -1); err != nil {
+		s.seen.add(h)
 		return err
 	}
-	delete(s.seen, id)
 	return nil
 }
 func (s *Sketch[T]) update(v HashedSymbol[T], direction int64) error {
@@ -56,6 +70,9 @@ func (s *Sketch[T]) update(v HashedSymbol[T], direction int64) error {
 	return nil
 }
 func (s *Sketch[T]) Subtract(other *Sketch[T]) error {
+	if other == nil || s.compatibility != other.compatibility || s.codec.CompatibilityID() != s.compatibility || other.codec.CompatibilityID() != other.compatibility {
+		return ErrIncompatible
+	}
 	if len(s.cells) != len(other.cells) {
 		return ErrDifferentLength
 	}
@@ -63,6 +80,14 @@ func (s *Sketch[T]) Subtract(other *Sketch[T]) error {
 		if other.cells[i].Count > 0 && s.cells[i].Count < -int64(^uint64(0)>>1)-1+other.cells[i].Count || other.cells[i].Count < 0 && s.cells[i].Count > int64(^uint64(0)>>1)+other.cells[i].Count {
 			return ErrCountOverflow
 		}
+		if err := s.codec.Validate(s.cells[i].Symbol); err != nil {
+			return err
+		}
+		if err := other.codec.Validate(other.cells[i].Symbol); err != nil {
+			return err
+		}
+	}
+	for i := range s.cells {
 		s.cells[i].Symbol = s.codec.XOR(s.cells[i].Symbol, other.cells[i].Symbol)
 		s.cells[i].Checksum ^= other.cells[i].Checksum
 		s.cells[i].Count -= other.cells[i].Count

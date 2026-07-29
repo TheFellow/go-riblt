@@ -28,7 +28,7 @@ type codingWindow[T any] struct {
 }
 
 func (w *codingWindow[T]) add(s HashedSymbol[T], m randomMapping) {
-	w.symbols = append(w.symbols, s)
+	w.symbols = append(w.symbols, cloneHashed(w.codec, s))
 	w.mappings = append(w.mappings, m)
 	heap.Push(&w.queue, queuedMapping{len(w.symbols) - 1, m.last})
 }
@@ -55,6 +55,9 @@ func (w *codingWindow[T]) apply(c CodedSymbol[T], direction int64) (CodedSymbol[
 }
 
 func (w *codingWindow[T]) reset() {
+	clear(w.symbols)
+	clear(w.mappings)
+	clear(w.queue)
 	w.symbols = w.symbols[:0]
 	w.mappings = w.mappings[:0]
 	w.queue = w.queue[:0]
