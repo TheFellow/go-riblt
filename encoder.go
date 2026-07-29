@@ -33,15 +33,15 @@ func (e *Encoder[T]) Add(value T) error {
 	e.window.add(s, newMapping(s.MappingHash))
 	return nil
 }
-func (e *Encoder[T]) Next() (CodedSymbol[T], error) {
+func (e *Encoder[T]) next() (CodedSymbol[T], error) {
 	e.started = true
 	return e.window.apply(zeroCoded(e.codec), 1)
 }
 
 // Cells returns a lazy, unbounded sequence of coded symbols and their errors.
-// Ranging begins at the encoder's current position and calls Next only when the
-// consumer requests another value. Breaking from the range stops production;
-// a later range over Cells resumes with the next cell.
+// Ranging begins at the encoder's current position and produces a cell only
+// when the consumer requests one. Breaking from the range stops production; a
+// later range over Cells resumes with the next cell.
 //
 // The sequence is a stateful view of e, not a replayable collection. Do not
 // range it concurrently or mix it with concurrent calls to other Encoder
@@ -49,7 +49,7 @@ func (e *Encoder[T]) Next() (CodedSymbol[T], error) {
 func (e *Encoder[T]) Cells() iter.Seq2[CodedSymbol[T], error] {
 	return func(yield func(CodedSymbol[T], error) bool) {
 		for {
-			cell, err := e.Next()
+			cell, err := e.next()
 			if !yield(cell, err) || err != nil {
 				return
 			}

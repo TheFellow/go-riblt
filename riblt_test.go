@@ -104,7 +104,7 @@ func TestEncoderCellsIsLazyAndStopsOnBreak(t *testing.T) {
 	want := make([]CodedSymbol[uint64], 3)
 	for i := range want {
 		var err error
-		want[i], err = reference.Next()
+		want[i], err = reference.next()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -189,7 +189,7 @@ func TestStateAndDuplicateErrors(t *testing.T) {
 	if err := e.Add(1); !errors.Is(err, ErrDuplicate) {
 		t.Fatal(err)
 	}
-	if _, err := e.Next(); err != nil {
+	if _, err := e.next(); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.Add(2); !errors.Is(err, ErrEncoderStarted) {
@@ -202,7 +202,7 @@ func TestStateAndDuplicateErrors(t *testing.T) {
 	if err := d.AddLocal(1); !errors.Is(err, ErrDuplicate) {
 		t.Fatal(err)
 	}
-	c, _ := e.Next()
+	c, _ := e.next()
 	if err := d.AddCoded(c); err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestStateAndDuplicateErrors(t *testing.T) {
 func TestReset(t *testing.T) {
 	e, _ := NewEncoder[uint64](uint64Codec{})
 	_ = e.Add(1)
-	_, _ = e.Next()
+	_, _ = e.next()
 	e.Reset()
 	if err := e.Add(1); err != nil {
 		t.Fatal(err)
