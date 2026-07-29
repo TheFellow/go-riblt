@@ -66,7 +66,7 @@ func TestMutableValuesAreOwned(t *testing.T) {
 		t.Fatal(err)
 	}
 	v[0] = 99
-	cell, err := e.Next()
+	cell, err := e.next()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestUint64CodecReconciles(t *testing.T) {
 		}
 	}
 	for !d.Complete() {
-		cell, err := e.Next()
+		cell, err := e.next()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -182,7 +182,7 @@ func TestDecodedSymbolLimit(t *testing.T) {
 	_ = e.Add(2)
 	d, _ := NewDecoderWithLimits[uint64](c, DecoderLimits{MaxCells: 100, MaxDecodedSymbols: 1})
 	for range 100 {
-		cell, err := e.Next()
+		cell, err := e.next()
 		if err != nil {
 			t.Fatal(err)
 		}

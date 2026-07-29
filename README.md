@@ -43,7 +43,7 @@ sections demonstrate:
 1. `Zero` and `XOR` form the Boolean group used to combine and recover values.
 2. `MappingHash` deterministically chooses a symbol's sparse sequence of cells.
 3. `Checksum` independently validates a candidate singleton.
-4. `Encoder.Next` makes the sketch rateless: the sender can keep streaming.
+4. `Encoder.Cells` makes the sketch rateless: the sender can keep streaming.
 5. `Decoder.AddCoded` subtracts the receiver's local set from each incoming
    cell.
 6. `Decoder.TryDecode` peels `+1` (upstream-only), `-1`
@@ -134,9 +134,10 @@ remove := decoder.Local() // downstream-only
 ```
 
 The sequence is tied to the encoder's current position rather than replayable.
-It calls `Next` only when the range requests a value, and a later range resumes
-at the following cell. `Next` remains available when a transport or event loop
-needs explicit one-cell-at-a-time control. Cells must arrive in order. The
+It produces one cell only when the range requests a value, and a later range
+resumes at the following cell. A transport or event loop that needs explicit
+one-cell-at-a-time control can adapt the sequence with `iter.Pull2`, calling
+the returned stop function when it finishes. Cells must arrive in order. The
 receiver needs a way to signal completion, or the sender can transmit bounded
 batches and await an acknowledgement. Cache hashes inside a custom immutable
 codec only if profiling justifies it; callers cannot supply cached hashes as
