@@ -9,9 +9,13 @@ import (
 
 type uint64Codec struct{}
 
-func (uint64Codec) Zero() uint64           { return 0 }
-func (uint64Codec) IsZero(v uint64) bool   { return v == 0 }
-func (uint64Codec) XOR(a, b uint64) uint64 { return a ^ b }
+func (uint64Codec) Zero() uint64              { return 0 }
+func (uint64Codec) IsZero(v uint64) bool      { return v == 0 }
+func (uint64Codec) Clone(v uint64) uint64     { return v }
+func (uint64Codec) Equal(a, b uint64) bool    { return a == b }
+func (uint64Codec) Validate(uint64) error     { return nil }
+func (uint64Codec) XOR(a, b uint64) uint64    { return a ^ b }
+func (uint64Codec) CompatibilityID() [32]byte { return [32]byte{1} }
 func mix(x uint64) uint64 {
 	x += 0x9e3779b97f4a7c15
 	x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9

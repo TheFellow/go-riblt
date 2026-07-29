@@ -37,3 +37,16 @@ func BenchmarkMapping(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkUint64CodecHash(b *testing.B) {
+	c, err := NewUint64Codec(testKey)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if c.MappingHash(uint64(i)) == c.Checksum(uint64(i)) {
+			b.Fatal("domain collision")
+		}
+	}
+}

@@ -5,13 +5,16 @@
 // combines a prefix with its local set and peels it until the difference is
 // known. Communication is proportional to the difference, not the set size.
 //
-// Values need not have methods. Instead, applications inject a Codec. This is
-// useful for built-in and third-party types and makes the distinct placement
-// and validation hashes visible. RIBLT is a set protocol: adding the same value
-// twice is an error.
+// Values need not have methods. Applications can use the keyed Uint64Codec or
+// fixed-width BytesCodec, or inject a Codec for another reversible fixed-width
+// representation. A codec owns cloning, equality, validation, XOR, hashes, and
+// a stable compatibility identity. RIBLT is a set protocol: adding the same
+// value twice is an error.
 //
-// This implementation assumes trusted inputs. An unkeyed checksum permits
-// adversarially constructed XOR collisions; production protocols exposed to
-// attackers should use a keyed, domain-separated checksum, authenticate the
-// transport, and apply resource limits.
+// Encoder, Decoder, and Sketch are not safe for concurrent method calls.
+// DecoderLimits bounds library allocations driven by coded cells, local
+// symbols, and decoded symbols. The caller remains responsible for an
+// authenticated, ordered transport, serialization limits, deadlines, protocol
+// version and codec compatibility negotiation, and safe application of the
+// decoded difference.
 package riblt

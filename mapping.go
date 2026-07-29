@@ -19,8 +19,10 @@ func newMapping(seed uint64) randomMapping {
 	return randomMapping{state: seed}
 }
 
-// next implements the gap distribution from the RIBLT paper. Index zero is
-// always selected; subsequent selections become progressively sparser.
+// next implements the v1 gap distribution from the RIBLT paper. Index zero is
+// always selected; subsequent selections become progressively sparser. Its
+// IEEE-754 float64 operations and constants are protocol-visible; changing
+// them requires a new ProtocolVersion and new compatibility IDs.
 func (m *randomMapping) next() (uint64, error) {
 	m.state *= mappingMultiplier
 	factor := (float64(m.last) + 1.5) * (math.Ldexp(1, 32)/math.Sqrt(float64(m.state)+1) - 1)
