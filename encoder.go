@@ -1,5 +1,7 @@
 package riblt
 
+import "iter"
+
 // Encoder incrementally produces a set's infinite RIBLT coded-symbol stream.
 type Encoder[T any] struct {
 	codec   Codec[T]
@@ -35,4 +37,24 @@ func (e *Encoder[T]) Next() (CodedSymbol[T], error) {
 	e.started = true
 	return e.window.apply(zeroCoded(e.codec), 1)
 }
+
+// Cells returns a lazy, unbounded sequence of coded symbols and their errors.
+// Ranging begins at the encoder's current position and calls Next only when the
+// consumer requests another value. Breaking from the range stops production;
+// a later range over Cells resumes with the next cell.
+//
+// The sequence is a stateful view of e, not a replayable collection. Do not
+// range it concurrently or mix it with concurrent calls to other Encoder
+// methods. A non-nil error is yielded once, then that range stops.
+func (e *Encoder[T]) Cells() iter.Seq2[CodedSymbol[T], error] {
+	return func(yield func(CodedSymbol[T], error) bool) {
+		for {
+			cell, err := e.Next()
+			if !yield(cell, err) || err != nil {
+				return
+			}
+		}
+	}
+}
+
 func (e *Encoder[T]) Reset() { e.window.reset(); e.seen.reset(); e.started = false }

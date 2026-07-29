@@ -35,11 +35,16 @@ func Example() {
 		_ = dec.AddLocal(v)
 	}
 	sent := 0
-	for !dec.Complete() {
-		coded, _ := enc.Next()
+	for coded, err := range enc.Cells() {
+		if err != nil {
+			panic(err)
+		}
 		sent++
 		_ = dec.AddCoded(coded)
 		_ = dec.TryDecode()
+		if dec.Complete() {
+			break
+		}
 	}
 	fmt.Println(dec.Remote()[0].Symbol, "only Alice has")
 	fmt.Println(dec.Local()[0].Symbol, "only Bob has")

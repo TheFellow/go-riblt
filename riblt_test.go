@@ -39,11 +39,12 @@ func reconcile(t testing.TB, a, b []uint64) (*Decoder[uint64], int) {
 			t.Fatal(err)
 		}
 	}
-	for n := 1; n < 100000; n++ {
-		c, err := enc.Next()
+	n := 0
+	for c, err := range enc.Cells() {
 		if err != nil {
 			t.Fatal(err)
 		}
+		n++
 		if err = dec.AddCoded(c); err != nil {
 			t.Fatal(err)
 		}
@@ -52,6 +53,9 @@ func reconcile(t testing.TB, a, b []uint64) (*Decoder[uint64], int) {
 		}
 		if dec.Complete() {
 			return dec, n
+		}
+		if n == 99999 {
+			break
 		}
 	}
 	t.Fatal("did not decode")
@@ -81,6 +85,57 @@ func TestEqualSetsRequireFirstCell(t *testing.T) {
 	d, n := reconcile(t, []uint64{1, 2}, []uint64{1, 2})
 	if n != 1 || !d.Complete() {
 		t.Fatalf("n=%d complete=%v", n, d.Complete())
+	}
+}
+
+func TestEncoderCellsIsLazyAndStopsOnBreak(t *testing.T) {
+	encoder, _ := NewEncoder[uint64](uint64Codec{})
+	if err := encoder.Add(1); err != nil {
+		t.Fatal(err)
+	}
+	cells := encoder.Cells()
+	if err := encoder.Add(2); err != nil {
+		t.Fatalf("constructing Cells started the encoder: %v", err)
+	}
+
+	reference, _ := NewEncoder[uint64](uint64Codec{})
+	_ = reference.Add(1)
+	_ = reference.Add(2)
+	want := make([]CodedSymbol[uint64], 3)
+	for i := range want {
+		var err error
+		want[i], err = reference.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var got []CodedSymbol[uint64]
+	for cell, err := range cells {
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, cell)
+		if len(got) == 2 {
+			break
+		}
+	}
+	if !slices.Equal(got, want[:2]) {
+		t.Fatalf("first range = %#v, want %#v", got, want[:2])
+	}
+	if err := encoder.Add(3); !errors.Is(err, ErrEncoderStarted) {
+		t.Fatalf("Add after ranging Cells: %v", err)
+	}
+
+	for cell, err := range encoder.Cells() {
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, cell)
+		break
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("resumed range = %#v, want %#v", got, want)
 	}
 }
 

@@ -45,11 +45,12 @@ func reconcile(size, difference int) (int, error) {
 
 	encoder := demo.NewEncoder(upstream...)
 	decoder := demo.NewDecoder(downstream...)
-	for cells := 1; ; cells++ {
-		cell, err := encoder.Next()
+	cells := 0
+	for cell, err := range encoder.Cells() {
 		if err != nil {
 			return 0, err
 		}
+		cells++
 		if err := decoder.AddCoded(cell); err != nil {
 			return 0, err
 		}
@@ -60,4 +61,5 @@ func reconcile(size, difference int) (int, error) {
 			return cells, nil
 		}
 	}
+	return 0, fmt.Errorf("encoder stream ended before decoding completed")
 }
