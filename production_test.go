@@ -10,6 +10,22 @@ var testKey = []byte("0123456789abcdef0123456789abcdef")
 
 type pointerCodec struct{ uint64Codec }
 
+func assertInvalidCodecRejected[T any](t *testing.T, codec Codec[T], value T) {
+	t.Helper()
+	if _, err := NewEncoder[T](codec); !errors.Is(err, ErrInvalidCodec) {
+		t.Errorf("NewEncoder error = %v, want ErrInvalidCodec", err)
+	}
+	if _, err := NewDecoder[T](codec); !errors.Is(err, ErrInvalidCodec) {
+		t.Errorf("NewDecoder error = %v, want ErrInvalidCodec", err)
+	}
+	if _, err := NewSketch[T](codec, 1); !errors.Is(err, ErrInvalidCodec) {
+		t.Errorf("NewSketch error = %v, want ErrInvalidCodec", err)
+	}
+	if _, err := Hash[T](codec, value); !errors.Is(err, ErrInvalidCodec) {
+		t.Errorf("Hash error = %v, want ErrInvalidCodec", err)
+	}
+}
+
 func TestCodecValidation(t *testing.T) {
 	var nilCodec *pointerCodec
 	if _, err := NewEncoder[uint64](nilCodec); !errors.Is(err, ErrNilCodec) {
@@ -18,6 +34,30 @@ func TestCodecValidation(t *testing.T) {
 	bad := uint64CodecWithBadZero{uint64Codec{}}
 	if _, err := NewDecoder[uint64](bad); !errors.Is(err, ErrInvalidCodec) {
 		t.Fatal(err)
+	}
+	weakUint64, err := NewUint64Codec([]byte("short"))
+	if !errors.Is(err, ErrWeakKey) {
+		t.Fatalf("NewUint64Codec error = %v, want ErrWeakKey", err)
+	}
+	for name, codec := range map[string]Codec[uint64]{
+		"zero value":      Uint64Codec{},
+		"weak-key result": weakUint64,
+	} {
+		t.Run("uint64 "+name, func(t *testing.T) {
+			assertInvalidCodecRejected(t, codec, uint64(1))
+		})
+	}
+	weakBytes, err := NewBytesCodec(4, []byte("short"))
+	if !errors.Is(err, ErrWeakKey) {
+		t.Fatalf("NewBytesCodec error = %v, want ErrWeakKey", err)
+	}
+	for name, codec := range map[string]Codec[[]byte]{
+		"zero value":      BytesCodec{},
+		"weak-key result": weakBytes,
+	} {
+		t.Run("bytes "+name, func(t *testing.T) {
+			assertInvalidCodecRejected(t, codec, []byte{1, 2, 3, 4})
+		})
 	}
 }
 
@@ -145,6 +185,44 @@ func TestDuplicateDetectionUsesEquality(t *testing.T) {
 	}
 }
 
+type placementCollisionCodec struct{ uint64Codec }
+
+func (placementCollisionCodec) MappingHash(uint64) uint64 { return 1 }
+func (placementCollisionCodec) CompatibilityID() [32]byte { return [32]byte{3} }
+
+func TestMappingCollisionCannotBeRepairedByChecksum(t *testing.T) {
+	codec := placementCollisionCodec{}
+	e, err := NewEncoder[uint64](codec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := NewDecoder[uint64](codec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Add(1); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AddLocal(2); err != nil {
+		t.Fatal(err)
+	}
+	for range 32 {
+		cell, err := e.next()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := d.AddCoded(cell); err != nil {
+			t.Fatal(err)
+		}
+		if err := d.TryDecode(); err != nil {
+			t.Fatal(err)
+		}
+		if d.Complete() {
+			t.Fatal("distinct symbols with identical placement unexpectedly converged")
+		}
+	}
+}
+
 func TestSketchRejectsIncompatibleConfiguration(t *testing.T) {
 	aCodec, _ := NewUint64Codec(testKey)
 	bCodec, _ := NewUint64Codec([]byte("abcdef0123456789abcdef0123456789"))
@@ -152,6 +230,92 @@ func TestSketchRejectsIncompatibleConfiguration(t *testing.T) {
 	b, _ := NewSketch[uint64](bCodec, 8)
 	if err := a.Subtract(b); !errors.Is(err, ErrIncompatible) {
 		t.Fatal(err)
+	}
+	if err := a.Add(1); err != nil {
+		t.Fatalf("failed subtraction sealed sketch: %v", err)
+	}
+}
+
+func TestSketchIsReadOnlyAfterSubtract(t *testing.T) {
+	codec, err := NewUint64Codec(testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := NewSketch[uint64](codec, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := NewSketch[uint64](codec, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Add(1); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Add(2); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Subtract(b); err != nil {
+		t.Fatal(err)
+	}
+	want := a.Cells()
+	if _, _, complete, err := a.Decode(); err != nil || !complete {
+		t.Fatalf("Decode after Subtract: complete=%v err=%v", complete, err)
+	}
+	for name, mutate := range map[string]func() error{
+		"Add":            func() error { return a.Add(3) },
+		"Remove":         func() error { return a.Remove(1) },
+		"Subtract again": func() error { return a.Subtract(b) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := mutate(); !errors.Is(err, ErrSketchSubtracted) {
+				t.Fatalf("error = %v, want ErrSketchSubtracted", err)
+			}
+			if got := a.Cells(); !slices.Equal(got, want) {
+				t.Fatalf("sealed sketch mutated: got %#v want %#v", got, want)
+			}
+		})
+	}
+}
+
+func TestSketchRejectsSubtractedRightHandSide(t *testing.T) {
+	codec, err := NewUint64Codec(testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receiver, err := NewSketch[uint64](codec, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := NewSketch[uint64](codec, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := NewSketch[uint64](codec, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := receiver.Add(1); err != nil {
+		t.Fatal(err)
+	}
+	if err := right.Add(2); err != nil {
+		t.Fatal(err)
+	}
+	if err := base.Add(3); err != nil {
+		t.Fatal(err)
+	}
+	if err := right.Subtract(base); err != nil {
+		t.Fatal(err)
+	}
+	want := receiver.Cells()
+	if err := receiver.Subtract(right); !errors.Is(err, ErrSketchSubtracted) {
+		t.Fatalf("Subtract error = %v, want ErrSketchSubtracted", err)
+	}
+	if got := receiver.Cells(); !slices.Equal(got, want) {
+		t.Fatalf("rejected RHS mutated receiver: got %#v want %#v", got, want)
+	}
+	if err := receiver.Add(4); err != nil {
+		t.Fatalf("rejected RHS sealed receiver: %v", err)
 	}
 }
 
@@ -172,6 +336,59 @@ func TestDecoderLimitsAndMalformedSymbols(t *testing.T) {
 	}
 	if err := d.AddCoded(CodedSymbol[[]byte]{Symbol: make([]byte, 4)}); !errors.Is(err, ErrResourceLimit) {
 		t.Fatal(err)
+	}
+}
+
+func TestAddCodedRejectedInputDoesNotStartDecoder(t *testing.T) {
+	c, err := NewBytesCodec(4, testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := NewDecoderWithLimits[[]byte](c, DecoderLimits{MaxCells: 2, MaxLocalSymbols: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.AddCoded(CodedSymbol[[]byte]{Symbol: []byte{1}}); !errors.Is(err, ErrInvalidSymbol) {
+		t.Fatalf("malformed cell error = %v, want ErrInvalidSymbol", err)
+	}
+	if d.started || len(d.cells) != 0 || len(d.ready) != 0 || len(d.resolved) != 0 {
+		t.Fatalf("malformed cell changed decoder state: started=%v cells=%d ready=%d resolved=%d", d.started, len(d.cells), len(d.ready), len(d.resolved))
+	}
+	if err := d.AddLocal([]byte{1, 2, 3, 4}); err != nil {
+		t.Fatalf("AddLocal after rejected first cell: %v", err)
+	}
+	if err := d.AddCoded(CodedSymbol[[]byte]{Symbol: make([]byte, 4)}); err != nil {
+		t.Fatal(err)
+	}
+	type decoderState struct {
+		cells, ready, resolved int
+		decoded                uint64
+		initial, local, remote uint64
+		started, complete      bool
+	}
+	state := func() decoderState {
+		return decoderState{
+			cells: len(d.cells), ready: len(d.ready), resolved: len(d.resolved),
+			decoded: d.decoded, initial: d.initial.next, local: d.local.next,
+			remote: d.remote.next, started: d.started, complete: d.complete,
+		}
+	}
+	want := state()
+	if err := d.AddCoded(CodedSymbol[[]byte]{Symbol: []byte{1}}); !errors.Is(err, ErrInvalidSymbol) {
+		t.Fatalf("malformed later cell error = %v, want ErrInvalidSymbol", err)
+	}
+	if got := state(); got != want {
+		t.Fatalf("malformed later cell changed decoder state: got %+v want %+v", got, want)
+	}
+	if err := d.AddCoded(CodedSymbol[[]byte]{Symbol: make([]byte, 4)}); err != nil {
+		t.Fatal(err)
+	}
+	want = state()
+	if err := d.AddCoded(CodedSymbol[[]byte]{Symbol: make([]byte, 4)}); !errors.Is(err, ErrResourceLimit) {
+		t.Fatalf("over-limit cell error = %v, want ErrResourceLimit", err)
+	}
+	if got := state(); got != want {
+		t.Fatalf("over-limit cell changed decoder state: got %+v want %+v", got, want)
 	}
 }
 

@@ -13,10 +13,19 @@ for another reversible fixed-width representation.
 ```go
 key := []byte("0123456789abcdef0123456789abcdef")
 codec, err := riblt.NewUint64Codec(key)
+if err != nil {
+    log.Fatal(err)
+}
 encoder, err := riblt.NewEncoder[uint64](codec)
+if err != nil {
+    log.Fatal(err)
+}
 decoder, err := riblt.NewDecoderWithLimits[uint64](codec, riblt.DecoderLimits{
     MaxCells: 10_000, MaxLocalSymbols: 1_000_000, MaxDecodedSymbols: 10_000,
 })
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
 Both peers must use the same key and codec parameters. Provision keys through
@@ -83,17 +92,31 @@ arbitrary struct, string, map, or variable-length slice. Convert records to a
 fixed-width content ID, use `BytesCodec`, or implement the full contract.
 
 The built-in codecs use HMAC-SHA-256 with independent mapping and checksum
-domains, truncated to the algorithm's 64-bit fields. Custom codecs exposed to
-untrusted input should provide equivalent keyed domain separation. Public
-prehashed insertion is intentionally absent: insertion validates, clones, and
-recomputes both hashes at the library boundary. `Hash` remains diagnostic only.
+domains, truncated to the algorithm's 64-bit fields. Always check their
+constructor errors: a weak-key or otherwise uninitialized built-in codec is
+rejected by `NewEncoder`, `NewDecoder`, `NewSketch`, and `Hash`.
+
+Keying prevents a party that does not know the key from cheaply choosing hash
+collisions. It does not make a peer that shares the key non-adversarial; the
+surrounding protocol must decide which peers are trusted and enforce finite
+work and transport limits. A `MappingHash` collision gives two distinct
+symbols the same placement sequence. If they occur on opposite sides of the
+difference, decoding may never converge, and an independent `Checksum` cannot
+repair that placement collision. The 64-bit hashes make accidental collisions
+unlikely, not impossible. Custom codecs exposed to untrusted input should
+provide equivalent keyed domain separation. Public prehashed insertion is
+intentionally absent: insertion validates, clones, and recomputes both hashes
+at the library boundary. `Hash` remains diagnostic only.
 
 ## Follow one reconciliation in code
 
 The sender registers its set before streaming:
 
 ```go
-encoder, _ := riblt.NewEncoder[Symbol](codec)
+encoder, err := riblt.NewEncoder[Symbol](codec)
+if err != nil {
+    return err
+}
 for _, value := range upstream {
     _ = encoder.Add(value)
 }
@@ -102,7 +125,10 @@ for _, value := range upstream {
 The receiver likewise registers local state before the first cell:
 
 ```go
-decoder, _ := riblt.NewDecoder[Symbol](codec)
+decoder, err := riblt.NewDecoder[Symbol](codec)
+if err != nil {
+    return err
+}
 for _, value := range downstream {
     _ = decoder.AddLocal(value)
 }
@@ -144,7 +170,10 @@ codec only if profiling justifies it; callers cannot supply cached hashes as
 trusted state.
 
 If a prefix length is known in advance, `Sketch[T]` offers a fixed-length form
-with `Add`, `Remove`, `Subtract`, and `Decode`. Streaming is the central RIBLT
+with `Add`, `Remove`, `Subtract`, and `Decode`. Build each input sketch first;
+successful `Subtract` seals its receiver, after which only `Cells` and `Decode`
+may be called. A sealed sketch represents a signed difference and cannot be
+used as either operand of another subtraction. Streaming is the central RIBLT
 advantage because it avoids guessing the difference size.
 
 ## Choose what a symbol means in your project
@@ -211,8 +240,14 @@ clarity; content-defined chunking can retain more sharing after insertions.
 ```sh
 go run ./cmd/experiment
 go test ./...
+go test -fuzz=FuzzReconcile -fuzztime=30s
+go test -fuzz=FuzzMalformedCodedBytes -fuzztime=30s
 go test -bench=. -benchmem ./...
 ```
+
+`go test ./...` runs only the seed corpus for fuzz tests. Use the explicit
+`-fuzz` commands above for sustained fuzzing; Go runs one fuzz target per
+invocation.
 
 The experiment holds symmetric difference constant while changing total set
 size. Its `24 payload bytes` per cell is an accounting convention for the

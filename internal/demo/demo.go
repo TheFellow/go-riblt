@@ -17,8 +17,9 @@ type Symbol struct {
 func (s Symbol) String() string { return fmt.Sprintf("item-%d", s.ID) }
 
 // Codec makes Symbol an XOR group and domain-separates placement from
-// singleton validation. For untrusted peers, replace Checksum with a keyed
-// hash and authenticate the protocol messages.
+// singleton validation. For untrusted input, key both hashes and authenticate
+// the protocol messages. A peer that knows the key is still able to search for
+// collisions, so production protocols must also enforce finite work limits.
 type Codec struct{}
 
 func (Codec) Zero() Symbol              { return Symbol{} }

@@ -1,11 +1,15 @@
 package riblt
 
-// Sketch is a mutable fixed-length prefix, useful when its size is known.
+// Sketch is a fixed-length prefix, useful when its size is known. It is mutable
+// while being built. A successful Subtract seals its receiver as a signed
+// difference; Cells and Decode remain available, but the sealed sketch cannot
+// be mutated or used as either operand of another Subtract.
 type Sketch[T any] struct {
 	codec         Codec[T]
 	cells         []CodedSymbol[T]
 	seen          symbolSet[T]
 	compatibility [32]byte
+	subtracted    bool
 }
 
 func NewSketch[T any](codec Codec[T], length int) (*Sketch[T], error) {
@@ -29,6 +33,9 @@ func (s *Sketch[T]) Cells() []CodedSymbol[T] {
 	return out
 }
 func (s *Sketch[T]) Add(value T) error {
+	if s.subtracted {
+		return ErrSketchSubtracted
+	}
 	if err := s.codec.Validate(value); err != nil {
 		return err
 	}
@@ -43,6 +50,9 @@ func (s *Sketch[T]) Add(value T) error {
 	return nil
 }
 func (s *Sketch[T]) Remove(v T) error {
+	if s.subtracted {
+		return ErrSketchSubtracted
+	}
 	if err := s.codec.Validate(v); err != nil {
 		return err
 	}
@@ -70,7 +80,16 @@ func (s *Sketch[T]) update(v HashedSymbol[T], direction int64) error {
 	return nil
 }
 func (s *Sketch[T]) Subtract(other *Sketch[T]) error {
-	if other == nil || s.compatibility != other.compatibility || s.codec.CompatibilityID() != s.compatibility || other.codec.CompatibilityID() != other.compatibility {
+	if s.subtracted {
+		return ErrSketchSubtracted
+	}
+	if other == nil {
+		return ErrIncompatible
+	}
+	if other.subtracted {
+		return ErrSketchSubtracted
+	}
+	if s.compatibility != other.compatibility || s.codec.CompatibilityID() != s.compatibility || other.codec.CompatibilityID() != other.compatibility {
 		return ErrIncompatible
 	}
 	if len(s.cells) != len(other.cells) {
@@ -92,6 +111,8 @@ func (s *Sketch[T]) Subtract(other *Sketch[T]) error {
 		s.cells[i].Checksum ^= other.cells[i].Checksum
 		s.cells[i].Count -= other.cells[i].Count
 	}
+	s.subtracted = true
+	s.seen.reset()
 	return nil
 }
 func (s *Sketch[T]) Decode() (remote, local []HashedSymbol[T], complete bool, err error) {

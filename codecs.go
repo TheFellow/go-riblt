@@ -17,6 +17,13 @@ type secureHasher struct {
 	id  [32]byte
 }
 
+func (h secureHasher) validateConfiguration() error {
+	if len(h.key) < 16 {
+		return ErrWeakKey
+	}
+	return nil
+}
+
 func newSecureHasher(kind string, key []byte, parameter []byte) (secureHasher, error) {
 	if len(key) < 16 {
 		return secureHasher{}, ErrWeakKey
@@ -45,19 +52,25 @@ func (h secureHasher) sum(domain string, value []byte) uint64 {
 // Uint64Codec is a keyed, domain-separated codec for uint64 symbols.
 type Uint64Codec struct{ h secureHasher }
 
+// NewUint64Codec constructs a codec using key. Keys shorter than 16 bytes are
+// rejected, and the returned zero codec must not be used when err is non-nil.
 func NewUint64Codec(key []byte) (Uint64Codec, error) {
 	h, err := newSecureHasher("uint64-le", key, nil)
-	return Uint64Codec{h}, err
+	if err != nil {
+		return Uint64Codec{}, err
+	}
+	return Uint64Codec{h}, nil
 }
-func (c Uint64Codec) Zero() uint64                { return 0 }
-func (c Uint64Codec) IsZero(v uint64) bool        { return v == 0 }
-func (c Uint64Codec) Clone(v uint64) uint64       { return v }
-func (c Uint64Codec) Equal(a, b uint64) bool      { return a == b }
-func (c Uint64Codec) Validate(uint64) error       { return nil }
-func (c Uint64Codec) XOR(a, b uint64) uint64      { return a ^ b }
-func (c Uint64Codec) CompatibilityID() [32]byte   { return c.h.id }
-func (c Uint64Codec) MappingHash(v uint64) uint64 { return c.hash(mappingDomain, v) }
-func (c Uint64Codec) Checksum(v uint64) uint64    { return c.hash(checksumDomain, v) }
+func (c Uint64Codec) validateConfiguration() error { return c.h.validateConfiguration() }
+func (c Uint64Codec) Zero() uint64                 { return 0 }
+func (c Uint64Codec) IsZero(v uint64) bool         { return v == 0 }
+func (c Uint64Codec) Clone(v uint64) uint64        { return v }
+func (c Uint64Codec) Equal(a, b uint64) bool       { return a == b }
+func (c Uint64Codec) Validate(uint64) error        { return nil }
+func (c Uint64Codec) XOR(a, b uint64) uint64       { return a ^ b }
+func (c Uint64Codec) CompatibilityID() [32]byte    { return c.h.id }
+func (c Uint64Codec) MappingHash(v uint64) uint64  { return c.hash(mappingDomain, v) }
+func (c Uint64Codec) Checksum(v uint64) uint64     { return c.hash(checksumDomain, v) }
 func (c Uint64Codec) hash(domain string, v uint64) uint64 {
 	var b [8]byte
 	binary.LittleEndian.PutUint64(b[:], v)
@@ -71,6 +84,8 @@ type BytesCodec struct {
 	width int
 }
 
+// NewBytesCodec constructs a fixed-width codec using key. Invalid widths and
+// keys shorter than 16 bytes return an unusable zero codec and a non-nil error.
 func NewBytesCodec(width int, key []byte) (BytesCodec, error) {
 	if width <= 0 {
 		return BytesCodec{}, ErrInvalidWidth
@@ -78,7 +93,16 @@ func NewBytesCodec(width int, key []byte) (BytesCodec, error) {
 	var p [8]byte
 	binary.LittleEndian.PutUint64(p[:], uint64(width))
 	h, err := newSecureHasher("fixed-bytes", key, p[:])
-	return BytesCodec{h: h, width: width}, err
+	if err != nil {
+		return BytesCodec{}, err
+	}
+	return BytesCodec{h: h, width: width}, nil
+}
+func (c BytesCodec) validateConfiguration() error {
+	if c.width <= 0 {
+		return ErrInvalidWidth
+	}
+	return c.h.validateConfiguration()
 }
 func (c BytesCodec) Zero() []byte { return make([]byte, c.width) }
 func (c BytesCodec) IsZero(v []byte) bool {

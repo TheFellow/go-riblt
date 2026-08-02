@@ -18,4 +18,9 @@
 // authenticated, ordered transport, serialization limits, deadlines, protocol
 // version and codec compatibility negotiation, and safe application of the
 // decoded difference.
+//
+// Keyed hashes deter collision selection only by parties that do not know the
+// key. A MappingHash collision gives different symbols the same placement
+// sequence and can prevent convergence; Checksum cannot repair it. Protocols
+// must therefore bound peer-controlled work even when using keyed codecs.
 package riblt

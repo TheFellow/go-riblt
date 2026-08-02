@@ -17,8 +17,11 @@ const ProtocolVersion = "go-riblt/v1"
 // zero. Clone must return storage independent of v. Equal compares values, not
 // hashes. Validate rejects values outside the codec's algebra (for example a
 // byte string of the wrong width). MappingHash and Checksum must be independent
-// and deterministic. CompatibilityID must change whenever any of those
-// semantics or their key changes.
+// and deterministic. A MappingHash collision gives distinct symbols identical
+// placement sequences and can prevent reconciliation from ever completing;
+// Checksum independence validates singleton candidates but cannot repair that
+// collision. CompatibilityID must change whenever any of those semantics or
+// their key changes.
 type Codec[T any] interface {
 	Zero() T
 	IsZero(T) bool
@@ -34,6 +37,11 @@ type Codec[T any] interface {
 func validateCodec[T any](codec Codec[T]) error {
 	if codec == nil || isNil(codec) {
 		return ErrNilCodec
+	}
+	if validator, ok := any(codec).(interface{ validateConfiguration() error }); ok {
+		if err := validator.validateConfiguration(); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidCodec, err)
+		}
 	}
 	zero := codec.Zero()
 	if err := codec.Validate(zero); err != nil {

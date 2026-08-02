@@ -69,7 +69,6 @@ func (d *Decoder[T]) AddCoded(c CodedSymbol[T]) error {
 	if d.complete {
 		return ErrAlreadyDecoded
 	}
-	d.started = true
 	if d.limits.MaxCells > 0 && uint64(len(d.cells)) >= d.limits.MaxCells {
 		return fmt.Errorf("%w: coded cells", ErrResourceLimit)
 	}
@@ -77,6 +76,10 @@ func (d *Decoder[T]) AddCoded(c CodedSymbol[T]) error {
 		return err
 	}
 	c = cloneCoded(d.codec, c)
+	// From here on, coding-window work can advance internal mappings even when
+	// it returns an error. Treat such failures as having started the decoder;
+	// validation and resource-limit failures above remain side-effect free.
+	d.started = true
 	var err error
 	if c, err = d.initial.apply(c, -1); err != nil {
 		return err
